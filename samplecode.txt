@@ -1,0 +1,39 @@
+
+  // Fetch Data Api Function
+  const fetchData = async () => {
+
+    const username = `{"UserName":"SAP038","CompanyDB":"MBM_TEST_DB"}`;
+    const password = 'crm123';
+
+    // Encode the username and password in Base64
+    const base64Credentials = btoa(username + ':' + password);
+
+    const requestOptions = {
+      method: 'GET', // Change the HTTP method as needed (GET, POST, etc.)
+      headers: {
+        'Authorization': 'Bearer ' + "c17f3bb2-7eb7-11ee-8000-00155d000f09",
+        'Content-Type': 'application/json',
+        'Cookie': "c17f3bb2-7eb7-11ee-8000-00155d000f09",
+      },
+      // Add other request options here, such as body for POST requests
+    };
+
+    // Replace 'YourSAPAPIEndpoint' with the actual SAP API endpoint
+    const sapApiUrl = 'https://14.99.121.130:50000/b1s/v1/Quotations?$select=DocEntry,DocNum,DocDate,CardName,DocTotal;';
+
+    fetch(sapApiUrl, requestOptions)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log(data)
+        // Handle the SAP API response here
+      })
+      .catch(error => {
+        console.error('SAP API request failed:', error);
+      });
+
+  };

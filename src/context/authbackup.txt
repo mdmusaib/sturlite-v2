@@ -1,0 +1,196 @@
+// ** React Imports
+import { createContext, useEffect, useState } from 'react'
+
+// ** Next Import
+import { useRouter } from 'next/router'
+
+// ** Axios
+import axios from 'axios'
+
+// ** Config
+import authConfig from 'src/configs/auth'
+
+//import { refreshToken } from './sessionTimer'
+
+// ** Defaults
+const defaultProvider = {
+  user: null,
+  loading: true,
+  setUser: () => null,
+  setLoading: () => Boolean,
+  login: () => Promise.resolve(),
+  logout: () => Promise.resolve()
+}
+
+const AuthContext = createContext(defaultProvider)
+
+const AuthProvider = ({ children }) => {
+  // ** States
+  const [user, setUser] = useState(defaultProvider.user)
+  const [loading, setLoading] = useState(defaultProvider.loading)
+
+  // ** Hooks
+  const router = useRouter()
+
+  /*useEffect(() => {
+    const interval = setInterval(() => {
+      refreshToken()
+    }, 30 * 60 * 1000) // 30 minutes in milliseconds
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [])*/
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const storedToken = window.localStorage.getItem(authConfig.storageTokenKeyName)
+      if (storedToken) {
+        setLoading(true)
+        await axios
+          .get(authConfig.meEndpoint, {
+            headers: {
+              Authorization: storedToken
+            }
+          })
+          .then(async response => {
+            setLoading(false)
+            setUser({ ...response.data.userData })
+          })
+          .catch(() => {
+            localStorage.removeItem('userData')
+            localStorage.removeItem('refreshToken')
+            localStorage.removeItem('accessToken')
+            setUser(null)
+            setLoading(false)
+            if (authConfig.onTokenExpiration === 'logout' && !router.pathname.includes('login')) {
+              router.replace('/login')
+            }
+          })
+      } else {
+        setLoading(false)
+      }
+    }
+    initAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleLogin = (params, errorCallback) => {
+   /* const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL
+    const DB_NAME = process.env.NEXT_PUBLIC_DATABASE
+    const DB_TYPE = process.env.NEXT_PUBLIC_DATABASE_TYPE
+    const SAP_BASE_URL = process.env.NEXT_PUBLIC_SAP_BASE_URL
+
+    let config = {
+      method: 'get',
+      maxBodyLength: Infinity,
+      url: `${BASE_URL}/Query/ExecuteQuery?dbtype=${DB_TYPE}&query=Select * from ${DB_NAME}."@CRMLOGIN" where "U_WebUser"=\'${params.email}\' and "U_WebPassword" = \'${params.password}\'`,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+    axios
+      .request(config)
+      .then(response => {
+        // console.log(response)
+        const jsonArray = JSON.parse(response.data)
+
+        const userdata = {
+          id: jsonArray[0].Code,
+          role: 'admin',
+          password: jsonArray[0].U_WebPassword,
+          fullName: jsonArray[0].Name,
+          username: jsonArray[0].Name,
+          email: jsonArray[0].U_WebUser,
+          sapuser: jsonArray[0].U_SAPUser,
+          sappassword: jsonArray[0].U_SAPPwd
+        }
+
+        const username = `{"UserName":"${jsonArray[0].U_SAPUser}","CompanyDB":"MBM_TEST_DB"}`
+        const password = `${jsonArray[0].U_SAPPwd}`
+
+        const base64Credentials = btoa(username + ':' + password)
+
+        let config = {
+          method: 'get',
+          maxBodyLength: Infinity,
+          url: `${SAP_BASE_URL}/Login()`,
+          headers: {
+            Authorization: 'Basic ' + base64Credentials,
+            'Content-Type': 'application/json'
+          }
+        }
+        axios
+          .request(config)
+          .then(response => {
+            window.localStorage.setItem(authConfig.storageTokenKeyName, response.data.SessionId)
+
+            window.localStorage.setItem(authConfig.TokenExpirationTimeout, response.data.SessionTimeout)
+
+            const returnUrl = router.query.returnUrl
+            console.log(returnUrl)
+            setUser({ ...userdata })
+
+            const base64Data = btoa(JSON.stringify(userdata))
+            window.localStorage.setItem('userData', base64Data)
+
+            const redirectURL = returnUrl && returnUrl !== '/' ? returnUrl : '/'
+            console.log(redirectURL)
+
+            router.replace(redirectURL)
+          })
+          .catch(error => {
+            console.log(error)
+            error = {
+              email: ['Something went wrong']
+            }
+            if (errorCallback) errorCallback(error)
+          })
+      })
+      .catch(error => {
+        console.log(error)
+        error = {
+          email: ['email or Password is Invalid']
+        }
+        if (errorCallback) errorCallback(error)
+      })*/
+
+    axios
+      .post(authConfig.loginEndpoint, params)
+      .then(async response => {
+        params.rememberMe
+          ? window.localStorage.setItem(authConfig.storageTokenKeyName, response.data.accessToken)
+          : null
+        const returnUrl = router.query.returnUrl
+        console.log(returnUrl)
+        setUser({ ...response.data.userData })
+        params.rememberMe ? window.localStorage.setItem('userData', JSON.stringify(response.data.userData)) : null
+        const redirectURL = returnUrl && returnUrl !== '/' ? returnUrl : '/'
+        console.log(redirectURL)
+        router.replace(redirectURL)
+      })
+      .catch(err => {
+        if (errorCallback) errorCallback(err)
+      })
+  }
+
+  const handleLogout = () => {
+    setUser(null)
+    window.localStorage.removeItem('userData')
+    window.localStorage.removeItem(authConfig.storageTokenKeyName)
+    router.push('/login')
+  }
+
+  const values = {
+    user,
+    loading,
+    setUser,
+    setLoading,
+    login: handleLogin,
+    logout: handleLogout
+  }
+
+  return <AuthContext.Provider value={values}>{children}</AuthContext.Provider>
+}
+
+export { AuthContext, AuthProvider }

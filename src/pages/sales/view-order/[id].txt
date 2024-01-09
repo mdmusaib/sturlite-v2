@@ -1,0 +1,859 @@
+import { React, useState, useEffect } from 'react'
+import Card from '@mui/material/Card'
+import Box from '@mui/material/Box'
+import Grid from '@mui/material/Grid'
+import Button from '@mui/material/Button'
+import Divider from '@mui/material/Divider'
+import CardContent from '@mui/material/CardContent'
+import CustomTextField from 'src/@core/components/mui/text-field'
+import Autocomplete from '@mui/material/Autocomplete';
+import Icon from 'src/@core/components/icon'
+import toast from 'react-hot-toast'
+import moment from 'moment'
+import { useRouter } from 'next/router';
+import axios from 'axios'
+import Link from 'next/link'
+import { styled } from '@mui/material/styles'
+import Typography from '@mui/material/Typography'
+import themeConfig from 'src/configs/themeConfig'
+
+const SAP_BASE_URL = process.env.NEXT_PUBLIC_SAP_BASE_URL;
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+const DB_NAME = process.env.NEXT_PUBLIC_DATABASE;
+const DB_TYPE = process.env.NEXT_PUBLIC_DATABASE_TYPE;
+
+
+const SALESORDER = `${SAP_BASE_URL}/Orders() `;
+const CUSTOMERS = `${BASE_URL}/Query/ExecuteQuery?dbtype=HANA&query=select * from ${DB_NAME}.EL_BPMaster_B1SLQuery LIMIT 10 OFFSET 0`;
+const ITEMSGROUP = `${SAP_BASE_URL}/ItemGroups()?$select=GroupName,Number&$orderby=Number desc`;
+
+const HeaderTitle = styled(Typography)({
+    fontWeight: 700,
+    lineHeight: '24px',
+    transition: 'opacity .25s ease-in-out, margin .25s ease-in-out'
+})
+
+const Index = () => {
+    const CREDENTIALS = window.localStorage.getItem("CREDENTIALS")
+
+    const router = useRouter();
+    const { id } = router.query;
+    const [customerDetails, setCustomerDetails] = useState([])
+    const [customerData, setCustomerData] = useState([]);
+    const [itemData, setIteamData] = useState([{ "data": [] }])
+    const [itemDataObj, setItemDataObj] = useState([])
+    const [runOnes, setRunOnes] = useState(false)
+
+    const [itemGroupData, setIteamGroupData] = useState([]);
+
+    const [totalCount, setTotalCount] = useState({
+        "Total_Before_Discount": 0.00,
+        "Discount": 0.00,
+        "Rounding": 0.00,
+        "Tax": 0.00,
+        "Total": 0.00
+    })
+
+    const [formData, setFormData] = useState({
+        "CardCode": "",
+        "Comments": "",
+        "DocDueDate": "",
+        "GroupNumber": "",
+        "DocDate": moment().format('YYYY-MM-DD'),
+        "DocumentLines": [
+            {
+                "LineNum": 0,
+                "ItemCode": "",
+                "Quantity": null,
+                "UnitPrice": null,
+                "StgDesc": null,
+                "TaxTotal": null,
+                "Total": null,
+                "TotalDis": null
+            }
+        ]
+    })
+
+    useEffect(() => {
+
+        const GETITEMSQUERYF = `${BASE_URL}/Query/ExecuteQuery?dbtype=${DB_TYPE}&query=select * from ${DB_NAME}.EL_ItemMaster_B1SLQuery   where "CustomerCode"= '${formData.CardCode}'  OR "ItmsGrpCod"= '102' LIMIT 50 OFFSET 0`;
+
+        const fetchData = () => {
+            axios
+                .get(GETITEMSQUERYF)
+                .then(response => {
+                    const dataArray = JSON.parse(response.data)
+
+                    const newObj = dataArray.map((e, i) => {
+                        var column = { ...e, "id": i }
+
+                        return column;
+                    })
+                    setItemDataObj(newObj)
+                })
+                .catch(error => console.log(error))
+        }
+        fetchData();
+    }, [formData.CardCode, formData.GroupNumber]);
+
+    const handleOnChange = (e, index) => {
+        const { name, value } = e.target;
+
+        const updatedDocumentLines = formData.DocumentLines.map((line, i) => {
+
+            if (i === index && line[name] !== undefined) {
+
+                return { ...line, [name]: value };
+            }
+
+            return line;
+        });
+
+        setFormData({ ...formData, DocumentLines: updatedDocumentLines });
+        handleOnUpdate(updatedDocumentLines)
+    };
+
+    const handleOnClear = () => {
+        setFormData({
+            "CardCode": "",
+            "Comments": " ",
+            "GroupNumber": "",
+            "DocDate": "",
+            "DocDueDate": "",
+            "BPL_IDAssignedToInvoice": null,
+            "SalesPersonCode": null,
+            "DocumentLines": [
+                {
+                    "LineNum": 0,
+                    "ItemCode": "",
+                    "Quantity": null,
+                    "UnitPrice": null,
+                    "StgDesc": null,
+                    "TaxTotal": null,
+                    "Total": null,
+                    "TotalDis": null
+                }
+            ]
+        });
+    }
+
+    const fetchData = async () => {
+        const requestOptions = {
+            method: 'GET',
+            headers: {
+                Authorization: 'Basic ' + CREDENTIALS,
+                'Content-Type': 'application/json'
+            }
+        }
+
+        fetch(ITEMSGROUP, requestOptions)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok')
+                }
+
+                return response.json();
+            })
+            .then(data => setIteamGroupData(data.value))
+            .catch(error => console.error('SAP API request failed:', error))
+
+
+        fetch(CUSTOMERS)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok')
+                }
+
+                return response.json();
+            })
+            .then(data => setCustomerData(JSON.parse(data)))
+            .catch(error => console.error('SAP API request failed:', error))
+    }
+
+    // Submit Funtion
+    const handleOnSubmit = () => {
+
+        const newDocumentLines = formData.DocumentLines.map(({ TotalDis, Total, ItemData, TaxTotal, ...rest }) => rest);
+        const UpdatedData = { ...formData, DocumentLines: newDocumentLines }
+
+        const requestOptions = {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Basic ' + CREDENTIALS,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(UpdatedData),
+            redirect: 'follow'
+        };
+
+        fetch(SALESORDER, requestOptions)
+            .then(response => {
+                toast.success("Successful");
+            })
+            .then(() => router.push('/sales/sales-order/'))
+            .catch(error => {
+                toast.error("Network")
+                console.error('SAP API request failed:', error)
+            });
+    }
+
+
+    useEffect(() => {
+        const GETSALESORDER = `${SAP_BASE_URL}/Orders(${id})`;
+
+        const getfetchData = async () => {
+
+            const requestOptions = {
+                method: 'GET',
+                headers: {
+                    Authorization: 'Basic ' + CREDENTIALS,
+                    'Content-Type': 'application/json'
+                }
+            }
+
+            fetch(GETSALESORDER, requestOptions)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok')
+                    }
+
+                    return response.json();
+                })
+                .then(data => {
+                    const { DocumentLines, SalesPersonCode, BPL_IDAssignedToInvoice, DocDueDate, Comments, CardCode, DocDate } = data;
+
+                    const newData = DocumentLines.map((e, i) => {
+                        return { "data": [] };
+                    });
+                    setIteamData(newData);
+
+
+                    const newObj = {
+                        "CardCode": CardCode,
+                        "Comments": Comments,
+                        "DocDate": DocDate,
+                        "DocDueDate": DocDueDate,
+                        "BPL_IDAssignedToInvoice": BPL_IDAssignedToInvoice,
+                        "SalesPersonCode": SalesPersonCode,
+                        "DocumentLines": DocumentLines
+                    }
+                    setFormData({ ...newObj })
+                    CardCode ? getCustomerDetails(CardCode) : null
+                    setRunOnes(true)
+                })
+                .catch(error => console.error('SAP API request failed:', error))
+        }
+        if (id) {
+            getfetchData()
+        }
+    }, [id])
+
+    useEffect(() => {
+        if (runOnes && formData.CardCode) {
+            handleOnUpdate(formData.DocumentLines)
+            setRunOnes(false)
+            console.log("I am Running")
+        }
+    }, [formData])
+
+    // Add Row Function 
+    const handleAddRow = () => {
+
+        const data = {
+            "data": []
+        }
+        setIteamData([...itemData, data])
+
+        const newDocumentLine = {
+            "LineNum": 0,
+            "ItemCode": "",
+            "Quantity": null,
+            "UnitPrice": null,
+            "StgDesc": null,
+            "TaxTotal": null,
+            "Total": null,
+            "TotalDis": null
+        };
+        setFormData({
+            ...formData,
+            DocumentLines: [...formData.DocumentLines, newDocumentLine],
+        });
+
+
+    };
+
+    // Delete Row Function 
+    const handleDeleteRow = (index) => {
+        const updatedDocumentLines = [...formData.DocumentLines];
+        updatedDocumentLines.splice(index, 1);
+        setFormData({ ...formData, DocumentLines: updatedDocumentLines, });
+        handleOnUpdate(updatedDocumentLines)
+    };
+
+    const handleOnUpdate = (DocumentLines) => {
+
+        const ArrayObj = DocumentLines
+
+        const valid = ArrayObj[0]
+
+        if (valid.ItemCode) {
+            const newObj = ArrayObj.map((e, i) => {
+                if (e.ItemCode) {
+                    const quantity = Number(e.Quantity || 0)
+                    const unitPrice = Number(e.UnitPrice || 0)
+                    const discount = e.StgDesc ? (Number(e.StgDesc) / 100) : null
+                    const texCode = e.TaxTotal ? (Number(e.TaxTotal) / 100) : null
+
+                    var total = 0;
+                    var afterDis = 0;
+                    var totalTax = 0;
+
+                    if (discount) {
+
+                        afterDis = unitPrice * discount;
+
+                        const finalPrice = unitPrice - afterDis;
+
+                        total = quantity * finalPrice
+
+                        totalTax = total * texCode
+
+                        total = total + totalTax
+
+                    } else {
+                        total = (quantity * unitPrice)
+
+                        totalTax = total * texCode
+
+                        total = total + totalTax
+                    }
+
+                    const data = { ...e, "Total": total.toFixed(2), "TotalDis": afterDis * quantity, "TotalTaxAmount": totalTax };
+
+                    return data;
+                }
+
+                return e;
+
+            })
+
+            setFormData({ ...formData, DocumentLines: newObj })
+
+            const totalBeforeDiscount = newObj.reduce((acc, cur) => acc + cur.Quantity * cur.UnitPrice, 0);
+            const discount = newObj.reduce((acc, cur) => acc + cur.TotalDis, 0)
+            const tax = newObj.reduce((acc, cur) => acc + cur.TotalTaxAmount, 0) || 0.00;
+            const total = totalBeforeDiscount - discount + tax || 0.00;
+
+            setTotalCount({
+                "Total_Before_Discount": totalBeforeDiscount.toFixed(2),
+                "Discount": discount.toFixed(2),
+                "Rounding": 0.00,
+                "Tax": tax.toFixed(2),
+                "Total": total.toFixed(2)
+            });
+        }
+    }
+
+    const fetchFilteredOptions = async (inputValue) => {
+
+        setCustomerData([])
+
+        const FILTERQUERY = `select * from ${DB_NAME}.EL_BPMaster_B1SLQuery where "CardName" like '${inputValue.toUpperCase()}%';`
+
+        fetch(`${BASE_URL}/Query/ExecuteQuery?dbtype=${DB_TYPE}&query=${FILTERQUERY}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok')
+                }
+
+                return response.json();
+            })
+            .then(data => {
+
+                const dataArray = JSON.parse(data)
+
+                const newObj = dataArray.map((e, i) => {
+                    var column = { ...e, "id": i }
+
+                    return column;
+                })
+
+                setCustomerData(dataArray)
+            })
+            .catch(error => console.error('SAP API request failed:', error))
+    };
+
+    const fetchFilteredItems = async (inputValue) => {
+        const QUERY = `select * from ${DB_NAME}.EL_ItemMaster_B1SLQuery Where "ItemName" LIKE '${inputValue.toUpperCase()}%' AND ("CustomerCode" = '${formData.CardCode}' AND "ItmsGrpCod" = '102') LIMIT 50 OFFSET 0`;
+
+        const FILTERITEMS = `${BASE_URL}/Query/ExecuteQuery?dbtype=${DB_TYPE}&query=${QUERY}`;
+
+        try {
+            const response = await fetch(FILTERITEMS);
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const data = await response.json();
+
+            const dataArray = JSON.parse(data);
+
+            return dataArray.map((e, i) => ({ ...e, id: i }));
+        } catch (error) {
+
+            console.error('SAP API request failed:', error);
+
+            return [];
+        }
+    };
+
+    const getCustomerDetails = (CardCode) => {
+        if (CardCode) {
+
+            const Query = `${SAP_BASE_URL}/BusinessPartners()?$select=CardCode, Phone1, CardName, EmailAddress, BPAddresses&$filter=CardCode eq '${CardCode}'`;
+
+            const requestOptions = {
+                method: 'GET',
+                headers: {
+                    Authorization: 'Basic ' + CREDENTIALS,
+                    'Content-Type': 'application/json'
+                }
+            }
+
+            fetch(Query, requestOptions)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok')
+                    }
+
+                    return response.json();
+                })
+                .then(data => setCustomerDetails(data.value))
+                .catch(error => console.error('SAP API request failed:', error))
+        }
+    }
+
+    useEffect(() => { fetchData() }, [])
+    useEffect(() => { }, [itemData, totalCount, itemDataObj]);
+
+    return (
+        <>
+            <Grid container spacing={6}>
+                <Grid item xs={12} >
+                    <Grid sx={{ background: "#fff", borderRadius: "6px", "boxShadow": "0px 2px 6px 0px rgba(47, 43, 61, 0.14)", padding: "24px" }}>
+                        <form onSubmit={e => e.preventDefault()}>
+                            <CardContent>
+                                <Grid xs={12} sx={{ display: "flex", flex: "wrap", pb: 16 }}>
+                                    <img src="/images/MBMLOGO.png" width={40} alt="MBM.india.pvt.Ltd" />
+                                    <HeaderTitle variant='h4' sx={{ ml: 4 }} >
+                                        {themeConfig.templateName}
+                                    </HeaderTitle>
+                                </Grid>
+                                <Grid container spacing={5} >
+                                    <Grid xs={12} sm={6} >
+                                        <Grid item xs={12}>
+                                            <Box sx={{ mb: 3, display: 'flex', }}>
+                                                <Autocomplete
+                                                    fullWidth
+                                                    sx={{ px: 3 }}
+                                                    options={customerData}
+                                                    getOptionLabel={(option) => option.CardName}
+                                                    getOptionSelected={(option, value) => option.CardCode === value.CardCode}
+                                                    value={customerData?.find((customer) => customer.CardCode === formData.CardCode) || null}
+                                                    autoComplete="off"
+                                                    onInputChange={async (event, newInputValue) => {
+                                                        newInputValue.length >= 1 ? fetchFilteredOptions(newInputValue) : null
+                                                    }}
+                                                    onChange={(event, newValue) => {
+
+                                                        const DocumentLines = [
+                                                            {
+                                                                "LineNum": 0,
+                                                                "ItemCode": "",
+                                                                "Quantity": null,
+                                                                "UnitPrice": null,
+                                                                "StgDesc": null,
+                                                                "TaxTotal": null,
+                                                                "Total": null,
+                                                                "TotalDis": null
+                                                            }
+                                                        ]
+                                                        setFormData({ ...formData, "DocumentLines": DocumentLines, "CardCode": newValue?.CardCode || "" })
+                                                        setTotalCount({
+                                                            "Total_Before_Discount": 0.00,
+                                                            "Discount": 0.00,
+                                                            "Rounding": 0.00,
+                                                            "Tax": 0.00,
+                                                            "Total": 0.00
+                                                        })
+                                                        getCustomerDetails(newValue?.CardCode)
+
+                                                        handleOnUpdate(DocumentLines)
+                                                    }}
+                                                    renderInput={(params) => (
+                                                        <CustomTextField
+                                                            {...params}
+                                                            label="Customer"
+                                                            size="small"
+                                                            placeholder="Search Customer"
+                                                        />
+                                                    )}
+                                                    renderOption={(props, option, { inputValue }) => (
+                                                        <li {...props}>
+                                                            <Grid spacing={1}>
+                                                                <Grid xs={12} sx={{ fontSize: "12px" }}>
+                                                                    {option.CardName}
+                                                                </Grid>
+                                                                <Grid xs={12} sx={{ opacity: "50%", fontSize: "10px" }}>
+                                                                    {option.CardCode}
+                                                                </Grid>
+                                                            </Grid>
+                                                        </li>
+                                                    )}
+                                                    loadingText="Loading..."
+                                                    noOptionsText="No options found"
+                                                    loading={!customerData[0]}
+                                                />
+                                            </Box>
+                                            <Box sx={{ px: 4 }}>
+                                                {customerDetails[0] && formData.CardCode ?
+                                                    <div>
+                                                        {customerDetails[0].CardName}
+                                                        <br></br>
+                                                        {customerDetails[0].BPAddresses[0].AddressName2}
+                                                        {customerDetails[0].BPAddresses[0].City}
+                                                        <br></br>
+                                                        {customerDetails[0].Phone1}
+                                                        <br></br>
+                                                        {customerDetails[0].EmailAddress}
+                                                    </div>
+                                                    : null
+                                                }
+                                            </Box>
+                                        </Grid>
+                                        {/* <Grid item xs={12}>
+                                            <Box sx={{ mt: 5, mb: 3, }}>
+                                                <Autocomplete
+                                                    sx={{ px: 3 }}
+                                                    fullWidth
+                                                    Autocomplete="off"
+                                                    options={itemGroupData}
+                                                    getOptionLabel={(option) => option.GroupName}
+                                                    value={itemGroupData.find((customer) => customer.Number === formData.GroupNumber) || null}
+                                                    onChange={(event, newValue) => {
+                                                        const DocumentLines = [
+                                                            {
+                                                                "LineNum": 0,
+                                                                "ItemCode": "",
+                                                                "Quantity": null,
+                                                                "UnitPrice": null,
+                                                                "StgDesc": null,
+                                                                "TaxTotal": null,
+                                                                "Total": null,
+                                                                "TotalDis": null
+                                                            }
+                                                        ]
+
+                                                        setTotalCount({
+                                                            "Total_Before_Discount": 0.00,
+                                                            "Discount": 0.00,
+                                                            "Rounding": 0.00,
+                                                            "Tax": 0.00,
+                                                            "Total": 0.00
+                                                        })
+
+                                                        setFormData({ ...formData, "DocumentLines": DocumentLines, "GroupNumber": newValue?.Number || "" })
+                                                        handleOnUpdate(DocumentLines)
+                                                    }}
+                                                    renderInput={(params) => (
+                                                        <CustomTextField
+                                                            {...params}
+                                                            label="Item Group"
+                                                            placeholder="Select Item"
+                                                        />
+                                                    )}
+                                                />
+                                            </Box>
+                                        </Grid> */}
+                                        <Grid item xs={12} sx={{ px: 3 }}>
+                                            <CustomTextField
+                                                sx={{ w: "300px" }}
+                                                type="date"
+                                                label="Posting Date"
+                                                name="DocDate"
+                                                value={formData.DocDate}
+                                                onChange={(e) => setFormData({ ...formData, "DocDate": e.target.value })}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                    <Grid xs={12} sm={6} sx={{ display: "flex", justifyContent: "end" }}>
+                                        <Grid xs={12} sm={9}>
+                                            {customerDetails[0] ?
+                                                <>
+                                                    {formData.CardCode &&
+                                                        <Typography style={{ "fontSize": "22px", "lineHeight": "40px", "fontWeight": 500 }}>
+                                                            Ship to
+                                                        </Typography>}
+                                                    <Grid xs={12}>
+                                                        <Grid>{formData.CardCode && customerDetails[0]?.BPAddresses[0].AddressName}</Grid>
+                                                    </Grid>
+                                                    <Grid xs={12}>
+                                                        <Grid>
+                                                            {formData.CardCode && customerDetails[0]?.BPAddresses[0].AddressName2}{" "}
+                                                            {formData.CardCode && customerDetails[0]?.BPAddresses[0].AddressName3}
+                                                        </Grid>
+                                                    </Grid>
+                                                    <Grid xs={12}>
+                                                        <Grid>{formData.CardCode && customerDetails[0]?.BPAddresses[0].City}</Grid>
+                                                    </Grid>
+                                                    <Grid xs={12}>
+                                                        <Grid>  {formData.CardCode && customerDetails[0]?.Phone1}</Grid>
+                                                    </Grid>
+                                                    <Grid xs={12} >
+                                                        <Grid>  {formData.CardCode && customerDetails[0]?.EmailAddress}</Grid>
+                                                    </Grid>
+                                                    <Grid xs={12}>
+                                                        <Grid>
+                                                            {formData.CardCode && customerDetails[0]?.BPAddresses[0].GSTIN ? "GSTIN : " : null} {formData.CardCode && customerDetails[0]?.BPAddresses[0].GSTIN}
+                                                        </Grid>
+                                                    </Grid>
+                                                </>
+                                                : null}
+                                        </Grid>
+                                    </Grid>
+
+                                    <Divider />
+                                    <Grid item xs={12} style={{ margin: "15px 0px" }}>
+                                        Item Selection
+                                    </Grid>
+                                    {formData.DocumentLines.map((e, i) => {
+
+                                        const FilterItem = itemData[i].data[0] ? itemData[i].data : itemDataObj
+
+                                        return (
+                                            <Card sx={{ mb: 3, pl: 6, pb: 6 }} key={i} style={{ width: "100%" }}>
+                                                <Grid sx={{ display: "flex", justifyContent: "end" }}>
+                                                    <div>
+                                                        <Button size="small" onClick={() => handleDeleteRow(i)} disabled={formData.DocumentLines[1] ? false : true}>
+                                                            <Icon icon='material-symbols:close' />
+                                                        </Button>
+                                                    </div>
+                                                </Grid>
+                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', marginTop: "-40px" }} className='demo-space-x' key={i}>
+                                                    <Grid sx={{ display: 'flex', flexWrap: 'wrap' }} className='demo-space-x' xs={10}>
+                                                        <Grid xs={4}>
+                                                            <Autocomplete
+                                                                disabled={formData.CardCode && formData.GroupNumber ? false : true}
+                                                                fullWidth
+                                                                autoComplete="off"
+                                                                options={FilterItem}
+                                                                getOptionLabel={(option) => option.ItemName}
+                                                                value={FilterItem.find((item) => item.ItemCode === formData.DocumentLines[i].ItemCode) || null}
+                                                                onChange={(event, newValue) => {
+                                                                    const getItem = newValue;
+                                                                    const updatedDocumentLines = [...formData.DocumentLines];
+
+                                                                    updatedDocumentLines[i] = {
+                                                                        ...updatedDocumentLines[i],
+                                                                        ItemCode: getItem?.ItemCode || null,
+                                                                        UnitPrice: getItem?.Price || null,
+                                                                        LineNum: i,
+                                                                        TaxTotal: Number(getItem?.TaxRate || 0),
+                                                                    };
+
+                                                                    setFormData({ ...formData, DocumentLines: updatedDocumentLines });
+                                                                    handleOnUpdate(updatedDocumentLines);
+                                                                }}
+
+                                                                onInputChange={async (event, newInputValue) => {
+
+                                                                    if (newInputValue.length >= 1) {
+
+                                                                        const getItem = await fetchFilteredItems(newInputValue);
+                                                                        const updatedDocumentLines = [...itemData];
+                                                                        updatedDocumentLines[i] = { "data": getItem };
+                                                                        setIteamData(updatedDocumentLines)
+                                                                    }
+                                                                }}
+
+                                                                renderInput={(params) => (
+                                                                    <CustomTextField
+                                                                        {...params}
+                                                                        size="small"
+                                                                        label="Item No."
+                                                                        placeholder="Search Customer"
+                                                                    />
+                                                                )}
+
+                                                                renderOption={(props, option) => (
+                                                                    <li {...props}>
+                                                                        <Grid spacing={1} >
+                                                                            <Grid xs={12} sx={{ fontSize: "12px" }}>
+                                                                                {option.ItemName}
+                                                                            </Grid>
+                                                                            <Grid xs={12} sx={{ opacity: "50%", fontSize: "10px" }}>
+                                                                                {option.ItemCode}
+                                                                            </Grid>
+                                                                        </Grid>
+                                                                    </li>
+                                                                )}
+                                                                loadingText="Loading..."
+                                                                noOptionsText="No items found"
+                                                                loading={!itemData[0]}
+                                                            />
+                                                        </Grid>
+                                                        <Grid style={{ width: "80px" }}>
+                                                            <CustomTextField
+                                                                type="number"
+                                                                Autocomplete="off"
+                                                                name="Quantity"
+                                                                label="Quantity"
+                                                                value={formData.DocumentLines[i].Quantity || null}
+                                                                onChange={(e) => handleOnChange(e, i)}
+                                                            />
+                                                        </Grid>
+                                                        <Grid style={{ width: "80px" }}>
+                                                            <CustomTextField
+                                                                type="number"
+                                                                Autocomplete="off"
+                                                                name="UnitPrice"
+                                                                label="Unit Price"
+                                                                value={formData.DocumentLines[i].UnitPrice || null}
+                                                                onChange={(e) => handleOnChange(e, i)}
+                                                            />
+                                                        </Grid>
+                                                        <Grid style={{ width: "100px" }}>
+                                                            <CustomTextField
+                                                                type="number"
+                                                                Autocomplete="off"
+                                                                name="StgDesc"
+                                                                label="Discount %"
+                                                                value={formData.DocumentLines[i].StgDesc || null}
+                                                                onChange={(e) => handleOnChange(e, i)}
+                                                            />
+                                                        </Grid>
+                                                        <Grid style={{ width: "100px" }}>
+                                                            <Grid style={{ width: "100px" }}>
+                                                                <CustomTextField
+                                                                    disabled
+                                                                    Autocomplete="off"
+                                                                    type="number"
+                                                                    name="TaxTotal"
+                                                                    label="Tax Code"
+                                                                    value={formData.DocumentLines[i].TaxTotal || null}
+                                                                    onChange={(e) => handleOnChange(e, i)}
+                                                                />
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Grid>
+                                                    <Grid style={{ width: "150px", paddingTop: "15px" }}>
+                                                        <CustomTextField
+                                                            fullWidth
+                                                            type="number"
+                                                            name="TaxTotal"
+                                                            label="Total"
+                                                            value={formData.DocumentLines[i].Total}
+                                                        />
+                                                    </Grid>
+                                                </Box>
+                                            </Card>
+                                        )
+                                    })}
+                                </Grid>
+                                <Grid>
+                                    <Button variant='contained' onClick={() => handleAddRow()} size="small" >
+                                        <Icon icon='tabler:plus' />  Add Row
+                                    </Button>
+                                </Grid>
+                                <Grid container sx={{ marginTop: "30px", display: 'flex', flexWrap: 'wrap', justifyContent: "space-between" }}>
+                                    <Grid item xs={12} sm={5} >
+                                        <Grid item xs={8} sx={{ mb: 5 }}>
+                                            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
+                                                <Typography sx={{ width: '110px', color: 'text.secondary' }}>
+                                                    Sales Person:
+                                                </Typography>
+                                            </Box>
+                                            <CustomTextField
+                                                disabled
+                                                Autocomplete="off"
+                                                fullWidth
+                                                type="text"
+                                                name="Sales Person"
+                                                value={""}
+                                                placeholder="Sales Person"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} >
+                                            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
+                                                <Typography sx={{ width: '110px', color: 'text.secondary' }}>
+                                                    Remarks:
+                                                </Typography>
+                                            </Box>
+                                            <CustomTextField
+                                                rows={4}
+                                                multiline
+                                                Autocomplete="off"
+                                                fullWidth
+                                                type="text"
+                                                name="Comments"
+                                                value={formData.Comments}
+                                                placeholder="Remarks"
+                                                onChange={(e) => setFormData({ ...formData, "Comments": e.target.value })}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                    <Grid item xs={12} sm={5} >
+                                        <div>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' }}
+                                                className='demo-space-x'>
+                                                <div>Total Before Discount</div>
+                                                <div>{totalCount.Total_Before_Discount}</div>
+                                            </Box>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' }}
+                                                className='demo-space-x'>
+                                                <div>Discount</div>
+                                                <div>{totalCount.Discount} </div>
+                                            </Box>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' }}
+                                                className='demo-space-x' >
+                                                <div>Rounding</div>
+                                                <div>{totalCount.Rounding}</div>
+                                            </Box>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' }}
+                                                className='demo-space-x' >
+                                                <div>Tax</div>
+                                                <div>{totalCount.Tax}</div>
+                                            </Box>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between' }}
+                                                className='demo-space-x'>
+                                                <div>Total </div>
+                                                <div>{totalCount.Total}</div>
+                                            </Box>
+                                        </div>
+                                    </Grid>
+                                </Grid>
+                            </CardContent>
+                        </form>
+                        <Grid xs={12} sx={{ p: 6, display: "flex", justifyContent: "end" }} className='demo-space-x'>
+                            <Grid>
+                                <Link href='/sales/sales-order'>
+                                    <Button variant='tonal' color='secondary' >
+                                        Back
+                                    </Button>
+                                </Link>
+                            </Grid>
+                            <Grid>
+                                <Button variant='contained' onClick={() => handleOnSubmit()}>
+                                    Save
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Grid >
+        </>
+    )
+}
+
+export default Index

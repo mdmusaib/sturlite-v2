@@ -1,0 +1,25 @@
+{
+    "theme_color": "#a51733",
+    "background_color": "#ffffff",
+    "icons": [
+        {
+            "purpose": "maskable",
+            "sizes": "512x512",
+            "src": "sturlite",
+            "type": "image/jpeg"
+        },
+        {
+            "purpose": "any",
+            "sizes": "512x512",
+            "src": "sturlite",
+            "type": "image/jpeg"
+        }
+    ],
+    "orientation": "any",
+    "display": "standalone",
+    "dir": "auto",
+    "lang": "en-US",
+    "name": "Sturlite web App",
+    "short_name": "Sturlite",
+    "description": "Sturlite web app"
+}
